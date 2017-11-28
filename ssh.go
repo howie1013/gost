@@ -53,11 +53,16 @@ func (c *sshDirectForwardConnector) Connect(conn net.Conn, raddr string) (net.Co
 }
 
 type sshRemoteForwardConnector struct {
+	cbOptions *CallbackOptions
 }
 
 // SSHRemoteForwardConnector creates a Connector for SSH TCP remote port forwarding.
-func SSHRemoteForwardConnector() Connector {
-	return &sshRemoteForwardConnector{}
+func SSHRemoteForwardConnector(opts ...CallbackOption) Connector {
+	cbOptions := &CallbackOptions{}
+	for _, opt := range opts {
+		opt(cbOptions)
+	}
+	return &sshRemoteForwardConnector{cbOptions: cbOptions}
 }
 
 func (c *sshRemoteForwardConnector) Connect(conn net.Conn, addr string) (net.Conn, error) {
@@ -68,8 +73,10 @@ func (c *sshRemoteForwardConnector) Connect(conn net.Conn, addr string) (net.Con
 
 	cc.session.once.Do(func() {
 		go func() {
-			defer log.Log("ssh-rtcp: session is closed")
-			defer close(cc.session.connChan)
+			defer func() {
+				log.Log("ssh-rtcp: session is closed")
+				close(cc.session.connChan)
+			}()
 
 			if cc.session == nil || cc.session.client == nil {
 				return
@@ -78,9 +85,19 @@ func (c *sshRemoteForwardConnector) Connect(conn net.Conn, addr string) (net.Con
 				addr = "0.0.0.0" + addr
 			}
 			ln, err := cc.session.client.Listen("tcp", addr)
+			// OnListened Callbackk
+			if c.cbOptions.OnListened != nil {
+				c.cbOptions.OnListened(ln, err)
+			}
 			if err != nil {
 				return
 			}
+			if c.cbOptions.OnListenerClosed != nil {
+				defer func() {
+					c.cbOptions.OnListenerClosed(ln)
+				}()
+			}
+
 			for {
 				rc, err := ln.Accept()
 				if err != nil {

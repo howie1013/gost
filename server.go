@@ -59,7 +59,6 @@ func (s *Server) Serve(h Handler) error {
 		tempDelay = 0
 		go h.Handle(conn)
 	}
-
 }
 
 // Listener is a proxy server listener, just like a net.Listener.
